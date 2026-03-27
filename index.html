@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI IoT Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands"></script>
+    
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; text-align: center; padding: 20px; cursor: pointer; }
+        .status-bar { margin-bottom: 20px; font-size: 0.8em; color: #888; }
+        .online { color: #00ff88; }
+        #alert-box { 
+            background: rgba(255, 77, 77, 0.9); 
+            color: white; padding: 20px; 
+            display: none; border-radius: 10px; 
+            position: fixed; top: 20px; left: 50%; 
+            transform: translateX(-50%); width: 80%;
+            z-index: 1000; border: 2px solid #fff;
+            animation: pulse 0.5s infinite;
+        }
+        @keyframes pulse { 0% {transform: translateX(-50%) scale(1);} 50% {transform: translateX(-50%) scale(1.05);} 100% {transform: translateX(-50%) scale(1);} }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; }
+        .card { background: #1a1a1a; padding: 25px; border-radius: 15px; border: 1px solid #333; }
+        .val { font-size: 2em; color: #00d4ff; font-weight: bold; display: block; }
+        .ai-status { font-style: italic; color: #555; margin-top: 10px; }
+    </style>
+</head>
+<body onclick="initAudioOnce()">
+
+    <div id="alert-box">⚠️ AI ALERT: VIBRATION DETECTED ⚠️</div>
+    <h1>AI Sensor Monitor</h1>
+    
+    <div class="status-bar">
+        System Status: <span id="mqtt-stat">Connecting...</span> | 
+        AI Voice: <span id="ai-stat">Waiting for interaction...</span>
+    </div>
+
+    <div class="grid">
+        <div class="card">Temp<span class="val" id="T">--</span>°C</div>
+        <div class="card">Humidity<span class="val" id="H">--</span>%</div>
+        <div class="card">Pressure<span class="val" id="P">--</span>hPa</div>
+        <div class="card">Voltage<span class="val" id="V">--</span>V</div>
+        <div class="card">Current<span class="val" id="A">--</span>A</div>
+        <div class="card">Objects<span class="val" id="Cnt">0</span></div>
+    </div>
+    
+    <p class="ai-status">AI assistant will activate on your first click.</p>
+
+    <script>
+        const TOPIC_BASE = "my_iot_project_77";
+        let audioUnlocked = false;
+        let model;
+
+        // 1. MQTT Setup
+        const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "client_" + Math.random().toString(16).slice(2));
+
+        // 2. Load TensorFlow Speech Model (Optional advanced logic)
+        async function loadTFModel() {
+            model = speechCommands.create("BROWSER_FFT");
+            await model.ensureModelLoaded();
+            document.getElementById('ai-stat').innerText = "AI Assistant Ready";
+        }
+        loadTFModel();
+
+        // 3. Audio Unlock (First Click)
+        function initAudioOnce() {
+            if (!audioUnlocked) {
+                audioUnlocked = true;
+                const intro = new SpeechSynthesisUtterance("AI Assistant synchronized. Monitoring started.");
+                window.speechSynthesis.speak(intro);
+                document.getElementById('ai-stat').innerText = "AI Listening (Active)";
+                document.querySelector('.ai-status').style.display = 'none';
+            }
+        }
+
+        function triggerVoiceAI() {
+            if (!audioUnlocked) return;
+            
+            document.getElementById('alert-box').style.display = 'block';
+            
+            // AI Voice Alert
+            const alertMsg = new SpeechSynthesisUtterance("Emergency. Significant vibration detected in the hardware. Please investigate.");
+            alertMsg.rate = 0.9; // Slightly slower for authority
+            alertMsg.pitch = 1.2;
+            window.speechSynthesis.speak(alertMsg);
+
+            setTimeout(() => { document.getElementById('alert-box').style.display = 'none'; }, 6000);
+        }
+
+        // 4. MQTT Callbacks
+        client.onMessageArrived = (msg) => {
+            if (msg.destinationName.includes("vibration")) {
+                triggerVoiceAI();
+            } else {
+                const pairs = msg.payloadString.split(',');
+                pairs.forEach(p => {
+                    const [k, v] = p.split(':');
+                    const el = document.getElementById(k);
+                    if (el) el.innerText = v;
+                });
+            }
+        };
+
+        client.connect({
+            useSSL: true,
+            onSuccess: () => {
+                document.getElementById('mqtt-stat').innerText = "Cloud Online";
+                document.getElementById('mqtt-stat').className = "online";
+                client.subscribe(TOPIC_BASE + "/#");
+            }
+        });
+    </script>
+</body>
+</html>
